@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: skyblue;
+        }
+    </style>
+</head>
+
+<body>
+
+</body>
+<script type="module">
+    import * as THREE from './three-js-master/build/three.module.min.js';
+    import { OrbitControls } from './three-js-master/examples/jsm/controls/OrbitControls.js';
+    class vertex {
+        x = NaN
+        y = NaN
+        z = NaN
+        constructor(x, y, z) {
+            this.x = x
+            this.y = y
+            this.z = z
+        }
+    }
+    class vec3d {
+        #data = []
+        #data_buffer = Array()
+        constructor() { }
+        set_position(...i) {
+            i.map(item => {
+                this.#data_buffer.push(item)
+                if (this.#data_buffer.length == 3)
+                    this.#add_data()
+            })
+        }
+        #add_data() {
+            this.#data.push(...this.#cal_normal_3d())
+            this.#data_buffer = Array()
+        }
+        #cal_normal_3d() {
+            const [v1, v2, v3] = this.#data_buffer
+            const n1 = (v2.y - v1.y) * (v3.z - v1.z) - (v2.z - v1.z) * (v3.y - v1.y)
+            const n2 = (v2.z - v1.z) * (v3.x - v1.x) - (v2.x - v1.x) * (v3.z - v1.z)
+            const n3 = (v2.x - v1.x) * (v3.y - v1.y) - (v2.y - v1.y) * (v3.x - v1.x)
+            return [{ pos: [v1.x, v1.y, v1.z], norm: [n1, n2, n3] },
+            { pos: [v2.x, v2.y, v2.z], norm: [n1, n2, n3] },
+            { pos: [v3.x, v3.y, v3.z], norm: [n1, n2, n3] }]
+        }
+        get_position() {
+            return this.#data
+        }
+    }
+    class numpy_js {
+        constructor() { }
+        static #precision = 6
+        static #number_repair = {
+            set: (obj, prop, value) => {
+                obj[prop] = Number(value.toFixed(this.#precision))
+                return true
+            }
+        }
+        static #same_dimension(d_1, d_2) {
+            let d1 = JSON.parse(JSON.stringify(d_1))
+            let d2 = JSON.parse(JSON.stringify(d_2))
+            function array_same_dimension(t1, t2) {
+                let if_number = false
+                let length = NaN
+                if (!Array.isArray(t1)) {
+                    t1 = Array.of(t1)
+                    if_number = true
+                }
+                if (!Array.isArray(t2)) {
+                    t2 = Array.of(t2)
+                    if_number = true
+                }
+                let i = t1.length - t2.length
+                if (i > 0) {
+                    t2.push(...Array(t1.length - t2.length).fill(if_number ? t2[0] : 0))
+                    length = t1.length
+                }
+                if (i < 0) {
+                    t1.push(...Array(t2.length - t1.length).fill(if_number ? t1[0] : 0))
+                    length = t2.length
+                }
+                if (i = 0)
+                    length = t2.length
+                for (let index = 0; index < length; index++) {
+                    if (!Object.is(typeof (t1[index]), 'number') && !Array.isArray(t1[index]))
+                        t1[index] = 0
+                    if (!Object.is(typeof (t2[index]), 'number') && !Array.isArray(t2[index]))
+                        t2[index] = 0
+                    if (Array.isArray(t1[index]) || Array.isArray(t2[index]))
+                        [t1[index], t2[index]] = array_same_dimension(t1[index], t2[index])
+                }
+                return [t1, t2]
+            }
+            return [d1, d2] = array_same_dimension(d1, d2)
+        }
+        static #arithmetic_model(data_source, compute) {
+            let buffer_nummber = 0
+            if (Object.is(typeof (data_source), 'number'))
+                buffer_nummber = Number(compute(data_source).toFixed(6))
+            else if (Array.isArray(data_source)) {
+                let print_data = b_d => {
+                    let proxy = new Proxy(b_d, this.#number_repair)
+                    for (let index = 0; index < b_d.length; index++) {
+                        if (Array.isArray(b_d[index]))
+                            b_d[index] = print_data(b_d[index])
+                        else if (Object.is(typeof (b_d[index]), 'number'))
+                            proxy[index] = compute(b_d[index])
+                        else b_d[index] = 0
+                    }
+                    return b_d
+                }
+                buffer_nummber = print_data(data_source)
+            }
+            return buffer_nummber
+        }
+        static #calculate_model(data_source, compute) {
+            let buffer_number = undefined
+            do
+                buffer_number = data_source.shift()
+            while (!Object.is(typeof (buffer_number), 'number') && !Array.isArray(buffer_number))
+            for (let item of data_source) {
+                if (!Object.is(typeof (item), 'number') && !Array.isArray(item))
+                    continue
+                if (Object.is(typeof (buffer_number), 'number') && Object.is(typeof (item), 'number')) {
+                    if (isNaN(item) || !isFinite(item))
+                        item = 0
+                    buffer_number = Number(compute(buffer_number, item).toFixed(this.#precision))
+                    continue
+                } else {
+                    let [d1, d2] = this.#same_dimension(buffer_number, item)
+                    let buffer_d = JSON.parse(JSON.stringify(d1))
+                    let print_data = (b_d, d_1, d_2) => {
+                        let proxy = new Proxy(b_d, this.#number_repair)
+                        for (let index = 0; index < b_d.length; index++)
+                            if (Array.isArray(b_d[index]))
+                                b_d[index] = print_data(b_d[index], d_1[index], d_2[index])
+                            else
+                                proxy[index] = compute(d_1[index], d_2[index])
+                        return b_d
+                    }
+                    buffer_number = print_data(buffer_d, d1, d2)
+                }
+            }
+            return buffer_number
+        }
+        static pi = Math.PI
+        static set_precision(number) {
+            if (Object.is(typeof (number), 'number'))
+                this.#precision = Number.parseInt(number)
+        }
+        static range(...d) {
+            let _object = {
+                start: NaN,
+                end: NaN,
+                step: NaN
+            }
+            if (d.length > 3) d.length = 3
+            switch (d.length) {
+                case 2:
+                    _object.start = d[0]
+                    _object.end = d[1]
+                    _object.step = 1
+                    break
+                case 3:
+                    _object.start = d[0]
+                    _object.end = d[1]
+                    _object.step = d[2]
+                    break
+                case 1:
+                    _object.start = 0
+                    _object.end = d[0]
+                    _object.step = 1
+                    break
+                default:
+                    break
+            }
+            let proxy = new Proxy(_object, this.#number_repair)
+            let [...r] = (function* () {
+                for (; _object.start < _object.end; proxy.start += _object.step)
+                    yield _object.start
+            })()
+            return r
+        }
+        static meshgrid(x, y) {
+            let clone_x = JSON.parse(JSON.stringify(x))
+            let clone_y = JSON.parse(JSON.stringify(y))
+            if (!Array.isArray(clone_x))
+                clone_x = Array.of(clone_x)
+            if (!Array.isArray(clone_y))
+                clone_y = Array.of(clone_y)
+            let buffer_x = Array()
+            let buffer_y = Array()
+            for (let index = 0; index < clone_y.length; index++)
+                buffer_x.push(clone_x)
+            for (let index = 0; index < clone_y.length; index++)
+                buffer_y.push(Array(clone_x.length).fill(clone_y[index]))
+            return [buffer_x, buffer_y]
+        }
+        static exp(d) {
+            if (d == undefined)
+                return undefined
+            let clone_d = JSON.parse(JSON.stringify(d))
+            return this.#arithmetic_model(clone_d, a => Math.E ** a)
+        }
+        static sin(d) {
+            if (d == undefined)
+                return undefined
+            let clone_d = JSON.parse(JSON.stringify(d))
+            return this.#arithmetic_model(clone_d, a => Math.sin(a))
+        }
+        static cos(d) {
+            if (d == undefined)
+                return undefined
+            let clone_d = JSON.parse(JSON.stringify(d))
+            return this.#arithmetic_model(clone_d, a => Math.cos(a))
+        }
+        static mod(...d) {
+            if (d.length == undefined)
+                return 0
+            let clone_d = JSON.parse(JSON.stringify(d))
+            return this.#calculate_model(clone_d, (a, b) => a % b)
+        }
+        static add(...d) {
+            if (d.length == undefined)
+                return 0
+            let clone_d = JSON.parse(JSON.stringify(d))
+            return this.#calculate_model(clone_d, (a, b) => a + b)
+        }
+        static subtract(...d) {
+            if (d.length == undefined)
+                return 0
+            let clone_d = JSON.parse(JSON.stringify(d))
+            return this.#calculate_model(clone_d, (a, b) => a - b)
+        }
+        static multiply(...d) {
+            if (d.length == undefined)
+                return 0
+            let clone_d = JSON.parse(JSON.stringify(d))
+            return this.#calculate_model(clone_d, (a, b) => a * b)
+        }
+        static divide(...d) {
+            if (d.length == undefined)
+                return 0
+            let clone_d = JSON.parse(JSON.stringify(d))
+            return this.#calculate_model(clone_d, (a, b) => a / b)
+        }
+        static exponent(...d) {
+            if (d.length == undefined)
+                return 0
+            let clone_d = JSON.parse(JSON.stringify(d))
+            return this.#calculate_model(clone_d, (a, b) => a ** b)
+        }
+    }
+    let [x, t] = numpy_js.meshgrid(
+        numpy_js.divide(numpy_js.range(25), 24),
+        numpy_js.add(numpy_js.multiply(numpy_js.divide(numpy_js.range(7, 367, 0.5), 575), 20, numpy_js.pi),
+            numpy_js.multiply(4, numpy_js.pi)
+        )
+    )
+    let p = numpy_js.multiply(
+        numpy_js.divide(numpy_js.pi, 2),
+        numpy_js.exp(numpy_js.divide(numpy_js.multiply(-1, t), numpy_js.multiply(8, numpy_js.pi)))
+    )
+    let u = numpy_js.add(
+        numpy_js.subtract(1, numpy_js.divide(
+            numpy_js.exponent(
+                numpy_js.subtract(1, numpy_js.divide(
+                    numpy_js.mod(numpy_js.multiply(3.3, t), numpy_js.multiply(2, numpy_js.pi)),
+                    numpy_js.pi
+                )), 4), 2)
+        ), numpy_js.divide(numpy_js.sin(numpy_js.multiply(15, t)), 150)
+    )
+    let y = numpy_js.multiply(2, numpy_js.exponent(numpy_js.subtract(numpy_js.exponent(x, 2), x), 2), numpy_js.sin(p))
+    let r = numpy_js.multiply(u, numpy_js.add(numpy_js.multiply(x, numpy_js.sin(p)), numpy_js.multiply(y, numpy_js.cos(p))))
+    let h = numpy_js.multiply(u, numpy_js.subtract(numpy_js.multiply(x, numpy_js.cos(p)), numpy_js.multiply(y, numpy_js.sin(p))))
+    let data_vec_3d_x = numpy_js.multiply(r, numpy_js.cos(t))
+    let data_vec_3d_y = numpy_js.multiply(r, numpy_js.sin(t))
+    let data_vec_3d_z = h
+    x = null
+    t = null
+    p = null
+    u = null
+    y = null
+    r = null
+    h = null
+    class create_vec3d {
+        #vec3d_data = undefined
+        #data_x = undefined
+        #data_y = undefined
+        #data_z = undefined
+        constructor(x, y, z, vec3d) {
+            this.#data_x = x
+            this.#data_y = y
+            this.#data_z = z
+            this.#vec3d_data = vec3d
+        }
+        open() {
+            let x_length = this.#data_x.length
+            let y_length = this.#data_y.length
+            let z_length = this.#data_z.length
+            for (let i = 0; i < x_length; i++)
+                for (let j = 0; j < y_length; j++) {
+                    this.#data_x[i][j] *= 3
+                    this.#data_y[i][j] *= 3
+                    this.#data_z[i][j] *= 3
+                }
+            for (let i = 0; i < (x_length - 1); i++)
+                for (let j = 0; j < (y_length - 1); j++)
+                    this.#vec3d_data.set_position(
+                        new vertex(this.#data_x[i][j], this.#data_y[i][j], this.#data_z[i][j]),
+                        new vertex(this.#data_x[i + 1][j], this.#data_y[i + 1][j], this.#data_z[i + 1][j]),
+                        new vertex(this.#data_x[i][j + 1], this.#data_y[i][j + 1], this.#data_z[i][j + 1]),
+                        new vertex(this.#data_x[i][j], this.#data_y[i][j], this.#data_z[i][j]),
+                        new vertex(this.#data_x[i][j + 1], this.#data_y[i][j + 1], this.#data_z[i][j + 1]),
+                        new vertex(this.#data_x[i + 1][j], this.#data_y[i + 1][j], this.#data_z[i + 1][j]),
+                        new vertex(this.#data_x[i + 1][j + 1], this.#data_y[i + 1][j + 1], this.#data_z[i + 1][j + 1]),
+                        new vertex(this.#data_x[i + 1][j], this.#data_y[i + 1][j], this.#data_z[i + 1][j]),
+                        new vertex(this.#data_x[i][j + 1], this.#data_y[i][j + 1], this.#data_z[i][j + 1]),
+                        new vertex(this.#data_x[i + 1][j + 1], this.#data_y[i + 1][j + 1], this.#data_z[i + 1][j + 1]),
+                        new vertex(this.#data_x[i][j + 1], this.#data_y[i][j + 1], this.#data_z[i][j + 1]),
+                        new vertex(this.#data_x[i + 1][j], this.#data_y[i + 1][j], this.#data_z[i + 1][j])
+                    )
+        }
+    }
+    let vertices = new vec3d()
+    new create_vec3d(data_vec_3d_x, data_vec_3d_y, data_vec_3d_z, vertices).open()
+    let public_data = [...vertices.get_position()]
+    const scene = new THREE.Scene()
+    const camera = new THREE.PerspectiveCamera(
+        75,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        1000
+    )
+    camera.position.set(0, -6, 10)
+    scene.add(camera)
+    const ground = new THREE.PlaneGeometry(800, 800)
+    const ground_color = new THREE.MeshBasicMaterial({ color: 0x99e64d })
+    const ground_cube = new THREE.Mesh(ground, ground_color)
+    scene.add(ground_cube)
+    const geometry = new THREE.BufferGeometry()
+    const numVertices = public_data.length
+    const positionNumComponents = 3
+    const normalNumComponents = 3
+    const positions = new Float32Array(numVertices * positionNumComponents)
+    const normals = new Float32Array(numVertices * normalNumComponents)
+    let posNdx = 0
+    let nrmNdx = 0
+    for (const vertex of public_data) {
+        positions.set(vertex.pos, posNdx)
+        normals.set(vertex.norm, nrmNdx)
+        posNdx += positionNumComponents
+        nrmNdx += normalNumComponents
+    }
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, positionNumComponents))
+    geometry.setAttribute('normal', new THREE.BufferAttribute(normals, normalNumComponents))
+    const cubeMaterial = new THREE.MeshPhongMaterial({ color: 0xE71B64 })
+    const cube = new THREE.Mesh(geometry, cubeMaterial)
+    scene.add(cube)
+    const color = 0xFFFFFF
+    const intensity = 1
+    const light = new THREE.DirectionalLight(color, intensity)
+    light.position.set(10, -10, 10)
+    scene.add(light)
+    const renderer = new THREE.WebGLRenderer()
+    renderer.setSize(window.innerWidth, window.innerHeight)
+    document.body.appendChild(renderer.domElement)
+    const controls = new OrbitControls(camera, renderer.domElement)
+    function render(time) {
+        time *= 0.001
+        cube.rotation.z = time
+        renderer.render(scene, camera)
+        requestAnimationFrame(render)
+    }
+    render()
+</script>
+
+</html>
